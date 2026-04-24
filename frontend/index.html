@@ -1,0 +1,187 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GNSS 导航 Agent 系统 v2</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="page">
+    <aside class="sidebar">
+      <h1>GNSS 导航 Agent</h1>
+      <p class="muted">多智能体协同的低成本测向、完好性监测、轨迹展示与解释系统</p>
+
+      <section class="panel dark-panel">
+        <h2>样例分析</h2>
+        <label>数据集
+          <select id="datasetName"></select>
+        </label>
+        <label>基线长度（m）
+          <input id="baselineLength" type="number" value="1.2" min="0.1" max="20" step="0.1" />
+        </label>
+        <label>初始候选解数量
+          <input id="candidateCount" type="number" value="5" min="3" max="50" step="1" />
+        </label>
+        <label class="checkbox">
+          <input id="useLlm" type="checkbox" checked /> 启用阿里云大模型 Agent 规划与解释
+        </label>
+        <label class="checkbox">
+          <input id="enableAmap" type="checkbox" /> 启用高德逆地理编码（可选）
+        </label>
+        <button id="analyzeBtn">分析内置样例</button>
+      </section>
+
+      <section class="panel dark-panel">
+        <h2>上传 NMEA</h2>
+        <label>主数据文件（.nmea/.txt/.log）
+          <input id="uploadFile" type="file" />
+        </label>
+        <label>参考 GGA（可选）
+          <input id="referenceFile" type="file" />
+        </label>
+        <button id="uploadBtn">上传并分析</button>
+      </section>
+
+      <section class="panel dark-panel">
+        <h2>轨迹回放</h2>
+        <div class="playback-panel">
+          <button id="playbackToggle" type="button">开始回放</button>
+          <label>回放速度
+            <select id="playbackSpeed">
+              <option value="1">1x</option>
+              <option value="2">2x</option>
+              <option value="4">4x</option>
+              <option value="8">8x</option>
+            </select>
+          </label>
+          <label>历元进度
+            <input id="playbackSlider" type="range" min="0" max="0" value="0" step="1" />
+          </label>
+          <div id="playbackHint" class="followup-answer small-answer">请先完成一次分析，再进行轨迹回放。</div>
+        </div>
+      </section>
+
+      <section class="panel dark-panel">
+        <h2>Agent 问答</h2>
+        <label>追问当前分析结果
+          <textarea id="followupQuestion" rows="5" placeholder="例如：为什么这次系统触发了重试？"></textarea>
+        </label>
+        <button id="followupBtn">让解释 Agent 回答</button>
+        <div id="followupAnswer" class="followup-answer">请先完成一次分析。</div>
+      </section>
+    </aside>
+
+    <main class="content">
+      <section class="hero">
+        <div>
+          <h2 id="datasetTitle">等待分析</h2>
+          <p id="datasetDesc" class="muted">请选择内置样例或上传 NMEA 文件。</p>
+        </div>
+        <div class="status" id="statusBar">后端未检测</div>
+      </section>
+
+      <section class="grid stats-grid" id="summaryCards"></section>
+
+      <section class="panel wide map-panel">
+        <div class="panel-head-between">
+          <div>
+            <h2>轨迹地图</h2>
+            <p class="muted">高德地图轨迹展示、风险着色、策略叠加与动态回放。</p>
+          </div>
+          <div id="mapStatus" class="map-status">等待分析</div>
+        </div>
+        <div id="mapContainer" class="map-container"></div>
+        <div class="map-legend">
+          <span><i class="legend-dot low"></i>低风险</span>
+          <span><i class="legend-dot medium"></i>中风险</span>
+          <span><i class="legend-dot high"></i>高风险</span>
+          <span><i class="legend-dot jump"></i>跳变点</span>
+        </div>
+        <div class="grid map-info-grid">
+          <div class="panel inset-panel">
+            <h3>当前回放点</h3>
+            <div id="playbackCurrentInfo" class="info-list muted">暂无轨迹数据。</div>
+          </div>
+          <div class="panel inset-panel">
+            <h3>轨迹统计</h3>
+            <div id="trajectoryStats" class="info-list muted">暂无轨迹数据。</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="grid layout-grid">
+        <div class="stack">
+          <div class="panel wide">
+            <h2>全局解释</h2>
+            <p id="globalExplanation" class="paragraph">暂无结果。</p>
+          </div>
+          <div class="panel wide">
+            <h2>Agent 执行轨迹</h2>
+            <div id="agentTrace"></div>
+          </div>
+        </div>
+        <div class="panel wide">
+          <h2>工具来源</h2>
+          <div id="toolSourceList" class="tool-grid"></div>
+        </div>
+      </section>
+
+      <section class="grid chart-grid">
+        <div class="panel">
+          <h2>平滑航向曲线</h2>
+          <canvas id="headingChart" width="700" height="260"></canvas>
+        </div>
+        <div class="panel">
+          <h2>置信度曲线</h2>
+          <canvas id="confidenceChart" width="700" height="260"></canvas>
+        </div>
+      </section>
+
+      <section class="grid chart-grid">
+        <div class="panel">
+          <h2>动态阈值与基线误差</h2>
+          <canvas id="thresholdChart" width="700" height="260"></canvas>
+        </div>
+        <div class="panel">
+          <h2>风险分布</h2>
+          <div id="riskBars"></div>
+        </div>
+      </section>
+
+      <section class="panel wide">
+        <h2>关键发现</h2>
+        <ul id="findingsList"></ul>
+      </section>
+
+      <section class="panel wide">
+        <h2>历元明细（前 150 条）</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>原始航向</th>
+                <th>平滑航向</th>
+                <th>质量分数</th>
+                <th>置信度</th>
+                <th>模式</th>
+                <th>策略</th>
+                <th>候选</th>
+                <th>分离度</th>
+                <th>阈值(m)</th>
+                <th>误差(m)</th>
+                <th>风险</th>
+              </tr>
+            </thead>
+            <tbody id="epochTable"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

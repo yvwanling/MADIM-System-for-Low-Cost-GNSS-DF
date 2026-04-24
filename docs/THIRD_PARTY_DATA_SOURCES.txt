@@ -1,0 +1,5 @@
+Apache-2.0 licensed sample files were downloaded from google/gps-measurement-tools (NmeaUtils/example).
+MIT licensed GPSKit sample file was downloaded from NUKnightLab/GPSKit.
+
+Google gps-measurement-tools license (Apache 2.0):
+See included Apache license text in docs/APACHE_LICENSE_google.txt
