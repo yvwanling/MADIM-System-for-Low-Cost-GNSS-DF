@@ -1,56 +1,56 @@
-
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GNSS 导航 Agent 系统 v2</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>GNSS Navigation Agent System v2</title>
+  <link rel="stylesheet" href="style.css?v=product-v4-20260501" />
+
+  <style id="collapsible-critical-css">
+    [data-collapsible].collapsed > .collapsible-body { display: none !important; }
+    .collapsible-trigger { cursor: pointer; }
+  </style>
 </head>
 <body>
   <div class="page">
     <aside class="sidebar">
-      <h1>GNSS 导航 Agent</h1>
-      <p class="muted">多智能体协同的低成本测向、完好性监测、轨迹展示与解释系统</p>
+      <h1>GNSS Navigation Agent System v2</h1>
 
       <section class="panel dark-panel">
-        <h2>样例分析</h2>
-        <label>数据集
+        <h2>内置样例分析</h2>
+        <label>样例数据集
           <select id="datasetName"></select>
         </label>
-        <label>基线长度（m）
-          <input id="baselineLength" type="number" value="1.2" min="0.1" max="20" step="0.1" />
+        <label>基线长度 (m)
+          <input id="baselineLength" type="number" step="0.01" value="1.20" />
         </label>
-        <label>初始候选解数量
-          <input id="candidateCount" type="number" value="5" min="3" max="50" step="1" />
+        <label>候选解数量
+          <input id="candidateCount" type="number" min="3" max="50" value="5" />
         </label>
-        <label class="checkbox">
-          <input id="useLlm" type="checkbox" checked /> 启用阿里云大模型 Agent 规划与解释
-        </label>
-        <label class="checkbox">
-          <input id="enableAmap" type="checkbox" /> 启用高德逆地理编码（可选）
-        </label>
+        <label class="checkbox"><input id="useLlm" type="checkbox" /> 启用大模型解释增强</label>
+        <label class="checkbox"><input id="enableAmap" type="checkbox" /> 启用高德逆地理编码</label>
         <button id="analyzeBtn">分析内置样例</button>
       </section>
 
       <section class="panel dark-panel">
-        <h2>上传 NMEA</h2>
-        <label>主数据文件（.nmea/.txt/.log）
-          <input id="uploadFile" type="file" />
+        <h2>上传 NMEA / 参考轨迹</h2>
+        <label>上传 NMEA 文件
+          <input id="uploadFile" type="file" accept=".nmea,.txt" />
         </label>
-        <label>参考 GGA（可选）
-          <input id="referenceFile" type="file" />
+        <label>上传参考 GGA（可选）
+          <input id="referenceFile" type="file" accept=".gga,.txt" />
         </label>
         <button id="uploadBtn">上传并分析</button>
       </section>
 
       <section class="panel dark-panel">
-        <h2>轨迹回放</h2>
+        <h2>轨迹回放控制</h2>
         <div class="playback-panel">
-          <button id="playbackToggle" type="button">开始回放</button>
-          <label>回放速度
+          <button id="playbackToggle">开始回放</button>
+          <label>播放速度
             <select id="playbackSpeed">
-              <option value="1">1x</option>
+              <option value="0.5">0.5x</option>
+              <option value="1" selected>1x</option>
               <option value="2">2x</option>
               <option value="4">4x</option>
               <option value="8">8x</option>
@@ -61,6 +61,23 @@
           </label>
           <div id="playbackHint" class="followup-answer small-answer">请先完成一次分析，再进行轨迹回放。</div>
         </div>
+      </section>
+
+      <section class="panel dark-panel">
+        <h2>场景策略规划</h2>
+        <label>输入你的目标
+          <textarea id="sceneGoal" rows="6" placeholder="例如：城市峡谷环境优先连续性；当前环境疑似遮挡严重，尽量降低跳变。"></textarea>
+        </label>
+        <button id="scenePlanBtn">生成分析/解算策略</button>
+        <div id="scenarioPlanResult" class="followup-answer">可在完成一次分析后，结合历史风险轨迹给出下一次采集建议。</div>
+      </section>
+
+      <section class="panel dark-panel">
+        <h2>导航分析工作台</h2>
+        <button id="demoBtn">运行标准分析流程</button>
+        <button id="compareBtn">运行多策略对比</button>
+        <button id="sampleEvalBtn">运行数据集评测</button>
+        <button id="exportReportBtn">导出分析报告 HTML</button>
       </section>
 
       <section class="panel dark-panel">
@@ -84,11 +101,60 @@
 
       <section class="grid stats-grid" id="summaryCards"></section>
 
+      <section class="grid competition-grid">
+        <div class="panel">
+          <div class="panel-head-between">
+            <div>
+              <h2>多策略对比实验台</h2>
+            </div>
+            <div id="strategyCompareStatus" class="map-status">等待运行</div>
+          </div>
+          <div id="strategyCompareResult" class="info-list muted">运行多策略对比后显示结果。</div>
+        </div>
+        <div class="panel">
+          <div class="panel-head-between">
+            <div>
+              <h2>数据集评测面板</h2>
+            </div>
+            <div id="sampleEvalStatus" class="map-status">等待运行</div>
+          </div>
+          <div id="sampleEvaluationResult" class="info-list muted">运行数据集评测后显示结果。</div>
+        </div>
+      </section>
+
+      <section class="panel wide">
+        <div class="panel-head-between">
+          <div>
+            <h2>报告导出与热点深挖</h2>
+          </div>
+          <div id="reportStatus" class="map-status">等待导出</div>
+        </div>
+        <div id="reportExportResult" class="info-list muted">完成一次分析后，可导出 HTML 报告。</div>
+      </section>
+
+      <section class="grid ops-grid">
+        <div class="panel">
+          <div class="panel-head-between">
+            <div>
+              <h2>执行流程看板</h2>
+            </div>
+          </div>
+          <div id="workflowTimeline" class="workflow-list muted">等待分析。</div>
+        </div>
+        <div class="panel">
+          <div class="panel-head-between">
+            <div>
+              <h2>关键协议日志</h2>
+            </div>
+          </div>
+          <div id="protocolLog" class="protocol-list muted">等待分析。</div>
+        </div>
+      </section>
+
       <section class="panel wide map-panel">
         <div class="panel-head-between">
           <div>
-            <h2>轨迹地图</h2>
-            <p class="muted">高德地图轨迹展示、风险着色、策略叠加与动态回放。</p>
+            <h2>风险感知轨迹回放</h2>
           </div>
           <div id="mapStatus" class="map-status">等待分析</div>
         </div>
@@ -98,8 +164,9 @@
           <span><i class="legend-dot medium"></i>中风险</span>
           <span><i class="legend-dot high"></i>高风险</span>
           <span><i class="legend-dot jump"></i>跳变点</span>
+          <span><i class="legend-dot hotspot"></i>热点</span>
         </div>
-        <div class="grid map-info-grid">
+        <div class="grid map-info-grid three-cols">
           <div class="panel inset-panel">
             <h3>当前回放点</h3>
             <div id="playbackCurrentInfo" class="info-list muted">暂无轨迹数据。</div>
@@ -107,6 +174,29 @@
           <div class="panel inset-panel">
             <h3>轨迹统计</h3>
             <div id="trajectoryStats" class="info-list muted">暂无轨迹数据。</div>
+          </div>
+          <div class="panel inset-panel">
+            <h3>下一次采集建议</h3>
+            <div id="collectionAdvice" class="info-list muted">暂无建议。</div>
+          </div>
+        </div>
+        <div class="collapsible-section collapsed" data-collapsible id="hotspotSection">
+          <button class="collapsible-trigger" type="button" aria-expanded="false" aria-controls="hotspotBody">
+            <span class="collapsible-title">风险热点列表与解释</span>
+            <span class="collapsible-meta" id="hotspotCollapseMeta">等待分析</span>
+            <span class="collapsible-chevron">⌄</span>
+          </button>
+          <div class="collapsible-body" id="hotspotBody">
+            <div class="grid hotspot-grid">
+              <div class="panel inset-panel hotspot-panel">
+                <h3>风险热点列表</h3>
+                <div id="hotspotList" class="hotspot-list muted">暂无热点。</div>
+              </div>
+              <div class="panel inset-panel hotspot-panel">
+                <h3>热点解释</h3>
+                <div id="hotspotDetail" class="info-list muted">点击地图中的热点标记或列表项，查看局部解释。</div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -117,14 +207,26 @@
             <h2>全局解释</h2>
             <p id="globalExplanation" class="paragraph">暂无结果。</p>
           </div>
-          <div class="panel wide">
-            <h2>Agent 执行轨迹</h2>
-            <div id="agentTrace"></div>
+          <div class="panel wide collapsible-section collapsed" data-collapsible id="agentTraceSection">
+            <button class="collapsible-trigger" type="button" aria-expanded="false" aria-controls="agentTraceBody">
+              <span class="collapsible-title">Agent 执行轨迹</span>
+              <span class="collapsible-meta" id="agentTraceCollapseMeta">等待分析</span>
+              <span class="collapsible-chevron">⌄</span>
+            </button>
+            <div class="collapsible-body" id="agentTraceBody">
+              <div id="agentTrace"></div>
+            </div>
           </div>
         </div>
-        <div class="panel wide">
-          <h2>工具来源</h2>
-          <div id="toolSourceList" class="tool-grid"></div>
+        <div class="panel wide collapsible-section collapsed" data-collapsible id="toolSourceSection">
+          <button class="collapsible-trigger" type="button" aria-expanded="false" aria-controls="toolSourceBody">
+            <span class="collapsible-title">工具来源</span>
+            <span class="collapsible-meta" id="toolSourceCollapseMeta">等待分析</span>
+            <span class="collapsible-chevron">⌄</span>
+          </button>
+          <div class="collapsible-body" id="toolSourceBody">
+            <div id="toolSourceList" class="tool-grid"></div>
+          </div>
         </div>
       </section>
 
@@ -155,33 +257,39 @@
         <ul id="findingsList"></ul>
       </section>
 
-      <section class="panel wide">
-        <h2>历元明细（前 150 条）</h2>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>时间</th>
-                <th>原始航向</th>
-                <th>平滑航向</th>
-                <th>质量分数</th>
-                <th>置信度</th>
-                <th>模式</th>
-                <th>策略</th>
-                <th>候选</th>
-                <th>分离度</th>
-                <th>阈值(m)</th>
-                <th>误差(m)</th>
-                <th>风险</th>
-              </tr>
-            </thead>
-            <tbody id="epochTable"></tbody>
-          </table>
+      <section class="panel wide collapsible-section collapsed" data-collapsible id="epochDetailSection">
+        <button class="collapsible-trigger" type="button" aria-expanded="false" aria-controls="epochDetailBody">
+          <span class="collapsible-title">历元明细（前 150 条）</span>
+          <span class="collapsible-meta" id="epochTableCollapseMeta">等待分析</span>
+          <span class="collapsible-chevron">⌄</span>
+        </button>
+        <div class="collapsible-body" id="epochDetailBody">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>原始航向</th>
+                  <th>平滑航向</th>
+                  <th>质量分数</th>
+                  <th>置信度</th>
+                  <th>模式</th>
+                  <th>策略</th>
+                  <th>候选</th>
+                  <th>分离度</th>
+                  <th>阈值(m)</th>
+                  <th>误差(m)</th>
+                  <th>风险</th>
+                </tr>
+              </thead>
+              <tbody id="epochTable"></tbody>
+            </table>
+          </div>
         </div>
       </section>
     </main>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=product-v4-20260501"></script>
 </body>
 </html>

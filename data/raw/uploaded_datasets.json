@@ -1,0 +1,26 @@
+{
+  "user_beihang_campus_riskwalk_test": {
+    "file_path": "uploads\\user_beihang_campus_riskwalk_test.nmea",
+    "reference_path": null,
+    "description": "用户上传并自动注册的数据集：beihang_campus_riskwalk_test.nmea。可直接参与样例评测和多策略对比。",
+    "uploaded": true,
+    "original_filename": "beihang_campus_riskwalk_test.nmea",
+    "created_at": "78c1689b2a9e"
+  },
+  "user_beihang_campus_riskwalk_test_7bfff5": {
+    "file_path": "uploads\\user_beihang_campus_riskwalk_test_7bfff5.nmea",
+    "reference_path": null,
+    "description": "用户上传的数据集：beihang_campus_riskwalk_test.nmea。可直接参与数据集评测和多策略对比。",
+    "uploaded": true,
+    "original_filename": "beihang_campus_riskwalk_test.nmea",
+    "created_at": "8a83740de968"
+  },
+  "user_beihang_campus_riskwalk_test_ef4ff9": {
+    "file_path": "uploads\\user_beihang_campus_riskwalk_test_ef4ff9.nmea",
+    "reference_path": null,
+    "description": "用户上传的数据集：beihang_campus_riskwalk_test.nmea。可直接参与数据集评测和多策略对比。",
+    "uploaded": true,
+    "original_filename": "beihang_campus_riskwalk_test.nmea",
+    "created_at": "07c97c195449"
+  }
+}

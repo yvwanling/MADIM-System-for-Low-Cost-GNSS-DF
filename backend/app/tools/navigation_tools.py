@@ -9,7 +9,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 
 import requests
 
-from app.core.config import PROCESSED_DATA_DIR, settings
+from app.core.config import PROCESSED_DATA_DIR, SKILLS_DIR, settings
+from app.skills.skill_loader import NavigationSkillLoader
 from app.services.nmea_parser import EpochRecord, NMEAParser
 
 
@@ -27,6 +28,7 @@ class ToolSpec:
 class ToolRegistry:
     def __init__(self) -> None:
         self.parser = NMEAParser()
+        self.skill_loader = NavigationSkillLoader(SKILLS_DIR)
         self._tools: Dict[str, ToolSpec] = {}
         for spec in self._build_specs():
             self._tools[spec.name] = spec
@@ -52,7 +54,11 @@ class ToolRegistry:
             ToolSpec("smooth_heading_series", "local-python", "平滑航向序列并检测突跳。", self.smooth_heading_series),
             ToolSpec("detect_heading_jumps", "local-python", "标注航向跳变。", self.detect_heading_jumps),
             ToolSpec("reverse_geocode_midpoint", "amap-webservice", "可选，调用高德逆地理编码获取数据集中心位置。", self.reverse_geocode_midpoint),
-            ToolSpec("build_trajectory_payload", "local-python", "构造前端地图展示、风险叠加与轨迹回放所需的轨迹数据。", self.build_trajectory_payload),
+            ToolSpec("load_navigation_skills", "local-skill-loader", "按场景目标加载 GNSS 导航技能包。", self.load_navigation_skills),
+            ToolSpec("plan_analysis_strategy", "local-python", "根据目标与历史风险轨迹规划分析/解算策略。", self.plan_analysis_strategy),
+            ToolSpec("recommend_collection_actions", "local-python", "结合风险热点给出下一次采集建议。", self.recommend_collection_actions),
+            ToolSpec("build_trajectory_payload", "local-python", "构造前端地图展示、风险叠加、热点解释与轨迹回放所需数据。", self.build_trajectory_payload),
+            ToolSpec("diagnose_hotspot_window", "local-python", "围绕选中风险热点提取局部证据并生成诊断建议。", self.diagnose_hotspot_window),
             ToolSpec("compile_report_payload", "local-python", "整理总结、轨迹、告警和工具来源供报告 Agent 使用。", self.compile_report_payload),
         ]
 
@@ -197,6 +203,14 @@ class ToolRegistry:
 
     def choose_navigation_mode(self, arguments: Dict[str, Any], board: Dict[str, Any]) -> Dict[str, Any]:
         request = board["request"]
+        override = board.get("strategy_override") or request.get("strategy_override") or {}
+        if override.get("model_choice"):
+            return {
+                "model_choice": str(override["model_choice"]),
+                "reason": str(override.get("reason", "多策略对比实验台指定策略覆盖默认模式选择。")),
+                "requested_candidate_count": int(request["candidate_count"]),
+                "strategy_override_name": override.get("name"),
+            }
         quality_report = board.get("quality_report", {})
         retry_round = board.get("retry_round", 0)
         score = float(quality_report.get("mean_quality_score", 0.0))
@@ -220,9 +234,23 @@ class ToolRegistry:
 
     def configure_candidate_budget(self, arguments: Dict[str, Any], board: Dict[str, Any]) -> Dict[str, Any]:
         request = board["request"]
+        override = board.get("strategy_override") or request.get("strategy_override") or {}
         mode = board.get("strategy_report", {}).get("model_choice", "conservative_tracking")
         retry_round = board.get("retry_round", 0)
         base = int(request["candidate_count"])
+        if override.get("candidate_count"):
+            candidate_count = int(override.get("candidate_count", base))
+            search_radius_deg = float(override.get("search_radius_deg", 10.0))
+            hold_strength = float(override.get("hold_strength", override.get("temporal_hold_strength", 0.60)))
+            enable_three_step = bool(override.get("enable_three_step", True))
+            profile = f"{mode}|n={candidate_count}|radius={search_radius_deg:.1f}"
+            return {
+                "candidate_count": candidate_count,
+                "search_radius_deg": search_radius_deg,
+                "hold_strength": hold_strength,
+                "enable_three_step": enable_three_step,
+                "strategy_profile": profile,
+            }
         if mode == "multi_gnss_precision":
             candidate_count = max(base, 6 + retry_round * 2)
             search_radius_deg = 6.0
@@ -253,6 +281,11 @@ class ToolRegistry:
         }
 
     def configure_retry_policy(self, arguments: Dict[str, Any], board: Dict[str, Any]) -> Dict[str, Any]:
+        override = board.get("strategy_override") or board.get("request", {}).get("strategy_override") or {}
+        if override.get("retry_policy"):
+            policy = dict(override["retry_policy"])
+            policy.setdefault("max_retry_rounds", settings.max_retry_rounds)
+            return policy
         mode = board.get("strategy_report", {}).get("model_choice", "conservative_tracking")
         if mode == "multi_gnss_precision":
             min_fix_rate = 0.88
@@ -549,6 +582,202 @@ class ToolRegistry:
         }
 
 
+    def load_navigation_skills(self, arguments: Dict[str, Any], board: Dict[str, Any]) -> Dict[str, Any]:
+        goal = str(arguments.get("goal") or board.get("scenario_goal") or "")
+        selected = self.skill_loader.match(goal)
+        payload = self.skill_loader.get_payload(selected)
+        board["loaded_skills"] = payload
+        return payload
+
+    def _infer_scene_tags(self, goal: str, board: Dict[str, Any]) -> List[str]:
+        goal_text = (goal or "").lower()
+        tags: List[str] = []
+        trajectory = board.get("optional_context", {}).get("trajectory", {})
+        hotspots = trajectory.get("hotspots", [])
+        high_hotspots = [h for h in hotspots if h.get("risk") == "high"]
+        avg_speed = board.get("summary_payload", {}).get("avg_speed_knots") or 0.0
+        if "城市峡谷" in goal or "urban" in goal_text or "遮挡" in goal or high_hotspots:
+            tags.append("occlusion")
+        if "连续性" in goal or "跳变" in goal or any(h.get("jump_count", 0) > 0 for h in hotspots):
+            tags.append("continuity")
+        if "开阔" in goal or "精度" in goal or "precision" in goal_text:
+            tags.append("precision")
+        if "动态" in goal or "稳健" in goal or avg_speed and float(avg_speed) > 8:
+            tags.append("dynamic")
+        if not tags:
+            tags.append("balanced")
+        return tags
+
+    def plan_analysis_strategy(self, arguments: Dict[str, Any], board: Dict[str, Any]) -> Dict[str, Any]:
+        goal = str(arguments.get("goal") or board.get("scenario_goal") or "")
+        tags = self._infer_scene_tags(goal, board)
+        trajectory = board.get("optional_context", {}).get("trajectory", {})
+        hotspots = trajectory.get("hotspots", [])
+        high_count = sum(1 for h in hotspots if h.get("risk") == "high")
+        jump_count = sum(int(h.get("jump_count", 0)) for h in hotspots)
+        low_sat_hotspots = sum(1 for h in hotspots if any("卫星数量偏低" in reason for reason in h.get("reasons", [])))
+        if "precision" in tags and "continuity" not in tags and high_count == 0:
+            mode = "precision_first"
+            candidate_count = 6
+            search_radius_deg = 6.0
+            hold_strength = 0.42
+            retry = {"min_fix_rate": 0.92, "max_high_risk_ratio": 0.22, "max_retry_rounds": settings.max_retry_rounds}
+            recovery = False
+            rationale_points = ["目标强调精度与开阔场景。", "历史风险热点较少，可收紧搜索半径。", "降低 hold 强度有助于保留精细变化。"]
+        elif "occlusion" in tags or low_sat_hotspots > 0 or high_count >= 2 or jump_count > 2 or "continuity" in tags:
+            mode = "continuity_first"
+            candidate_count = 12 if high_count < 4 else 14
+            search_radius_deg = 12.0 if jump_count < 4 else 14.0
+            hold_strength = 0.84
+            retry = {"min_fix_rate": 0.82, "max_high_risk_ratio": 0.18, "max_retry_rounds": settings.max_retry_rounds + 1}
+            recovery = True
+            rationale_points = ["历史轨迹存在明显风险热点或遮挡特征。", "优先连续性与抗跳变，因此提高候选解数量与 hold 强度。", "启用恢复模式便于在弱分离区段重新锁定。"]
+        elif "dynamic" in tags:
+            mode = "balanced_robust"
+            candidate_count = 10
+            search_radius_deg = 10.0
+            hold_strength = 0.72
+            retry = {"min_fix_rate": 0.86, "max_high_risk_ratio": 0.28, "max_retry_rounds": settings.max_retry_rounds}
+            recovery = True
+            rationale_points = ["目标强调动态载体稳健输出。", "适度增大候选预算有助于降低机动场景误判。", "提高 hold 强度可抑制高速转向中的跳变。"]
+        else:
+            mode = "balanced_navigation"
+            candidate_count = 8
+            search_radius_deg = 8.0
+            hold_strength = 0.60
+            retry = {"min_fix_rate": 0.88, "max_high_risk_ratio": 0.25, "max_retry_rounds": settings.max_retry_rounds}
+            recovery = True
+            rationale_points = ["当前目标未明显偏向精度或连续性，采用平衡模式。", "使用中等搜索半径和候选预算，以兼顾精度、稳定性和效率。"]
+        plan = {
+            "recommended_mode": mode,
+            "candidate_count": int(candidate_count),
+            "search_radius_deg": float(search_radius_deg),
+            "temporal_hold_strength": float(hold_strength),
+            "retry_thresholds": retry,
+            "enable_recovery_mode": bool(recovery),
+            "scene_tags": tags,
+            "rationale_points": rationale_points,
+            "hotspot_references": [
+                f"{item.get('title')}（{item.get('start_timestamp')} - {item.get('end_timestamp')}）" for item in hotspots[:3]
+            ],
+        }
+        board["scenario_strategy_plan"] = plan
+        return plan
+
+    def recommend_collection_actions(self, arguments: Dict[str, Any], board: Dict[str, Any]) -> Dict[str, Any]:
+        trajectory = board.get("optional_context", {}).get("trajectory", {})
+        hotspots = trajectory.get("hotspots", [])
+        advice: List[str] = []
+        for hotspot in hotspots[:4]:
+            title = hotspot.get("title", "热点区段")
+            if hotspot.get("jump_count", 0) > 0:
+                advice.append(f"{title} 检测到跳变，建议下一次采集在该区段减速或补采，并优先 continuity-first。")
+            elif any("卫星数量偏低" in reason for reason in hotspot.get("reasons", [])):
+                advice.append(f"{title} 卫星可见性偏低，建议避开高楼遮挡侧或延长采样时长。")
+            else:
+                advice.append(f"{title} 存在持续风险，建议提前启用恢复模式并提高候选预算。")
+        if not advice:
+            advice = ["历史轨迹未发现显著热点，建议继续使用 balanced_navigation 并保留一次恢复重试。"]
+        if any(h.get("risk") == "high" for h in hotspots):
+            advice.append("高风险区段较集中，建议下次采集优先避开高楼密集或急转弯区域。")
+        board.setdefault("scenario_strategy_plan", {})["collection_advice"] = advice[:5]
+        return {"collection_advice": advice[:5]}
+
+    def _build_hotspots_from_points(self, points: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        def is_hot(point: Dict[str, Any]) -> bool:
+            return point.get("risk") in {"high", "medium"} or point.get("jump_detected") or float(point.get("confidence", 0.0)) < 0.62
+
+        groups: List[List[Dict[str, Any]]] = []
+        current: List[Dict[str, Any]] = []
+        for point in points:
+            if is_hot(point):
+                if current and point["epoch_index"] == current[-1]["epoch_index"] + 1:
+                    current.append(point)
+                else:
+                    if current:
+                        groups.append(current)
+                    current = [point]
+            else:
+                if current:
+                    groups.append(current)
+                    current = []
+        if current:
+            groups.append(current)
+
+        hotspots: List[Dict[str, Any]] = []
+        for idx, group in enumerate(groups, start=1):
+            if len(group) == 1 and group[0].get("risk") == "medium" and not group[0].get("jump_detected"):
+                continue
+            risk_counter = Counter(point.get("risk", "unknown") for point in group)
+            dominant_risk = "high" if risk_counter.get("high", 0) else "medium"
+            avg_conf = round(sum(float(point.get("confidence", 0.0)) for point in group) / len(group), 4)
+            avg_quality = round(sum(float(point.get("quality_score", 0.0)) for point in group) / len(group), 4)
+            avg_sats = round(sum(float(point.get("satellite_count", 0)) for point in group) / len(group), 2)
+            jump_count = sum(1 for point in group if point.get("jump_detected"))
+            length_m = 0.0
+            for prev, curr in zip(group[:-1], group[1:]):
+                length_m += self.parser._haversine_m(prev["latitude"], prev["longitude"], curr["latitude"], curr["longitude"])
+            max_err = max(float(point.get("baseline_error_m", 0.0)) for point in group)
+            max_threshold = max(float(point.get("dynamic_threshold_m", 0.0)) for point in group)
+            reasons: List[str] = []
+            if avg_sats < 7.0:
+                reasons.append("卫星数量偏低")
+            if avg_quality < 0.55:
+                reasons.append("观测质量偏低")
+            if jump_count > 0:
+                reasons.append("存在航向跳变")
+            if risk_counter.get("high", 0) / len(group) >= 0.5:
+                reasons.append("连续高风险历元占比较高")
+            if max_err > max(max_threshold * 1.05, 0.02):
+                reasons.append("基线误差接近或超过动态阈值")
+            if not reasons:
+                reasons.append("局部置信度下降")
+            severity_score = round(min(1.0, 0.38 * (1 if dominant_risk == "high" else 0.6) + 0.32 * (1 - avg_conf) + 0.15 * min(jump_count / 3.0, 1.0) + 0.15 * max(0.0, (7.0 - avg_sats) / 7.0)), 4)
+            recommendation = (
+                "建议减速并采用 continuity-first，必要时补采该区段。" if jump_count > 0
+                else "建议提高候选预算并关注遮挡区域，可考虑 recovery 模式。"
+            )
+            lat = round(sum(point["latitude"] for point in group) / len(group), 7)
+            lon = round(sum(point["longitude"] for point in group) / len(group), 7)
+            title = f"热点 {idx}｜{dominant_risk} 风险"
+            hotspots.append({
+                "id": f"hotspot_{idx}",
+                "title": title,
+                "risk": dominant_risk,
+                "severity_score": severity_score,
+                "start_timestamp": group[0]["timestamp"],
+                "end_timestamp": group[-1]["timestamp"],
+                "center": {"latitude": lat, "longitude": lon},
+                "point_start_index": group[0]["seq"],
+                "point_end_index": group[-1]["seq"],
+                "avg_confidence": avg_conf,
+                "avg_quality_score": avg_quality,
+                "avg_satellite_count": avg_sats,
+                "jump_count": jump_count,
+                "length_m": round(length_m, 2),
+                "dominant_strategy": Counter(point.get("strategy_profile", "unknown") for point in group).most_common(1)[0][0],
+                "reasons": reasons,
+                "explanation": f"{title} 从 {group[0]['timestamp']} 持续到 {group[-1]['timestamp']}，平均置信度 {avg_conf:.2f}，主要原因：{'、'.join(reasons)}。",
+                "recommendation": recommendation,
+            })
+        return hotspots
+
+    def _build_collection_advice(self, hotspots: List[Dict[str, Any]]) -> List[str]:
+        advice: List[str] = []
+        if not hotspots:
+            return ["本次轨迹未出现显著风险热点，下一次采集可继续使用 balanced_navigation，并保留默认一次重试。"]
+        if any(item.get("jump_count", 0) > 0 for item in hotspots):
+            advice.append("存在跳变热点，建议在对应区段减速、增加采样时长，并优先 continuity-first。")
+        if any(any("卫星数量偏低" in reason for reason in item.get("reasons", [])) for item in hotspots):
+            advice.append("部分高风险区段卫星可见性不足，建议避开高楼遮挡侧或改用更开阔路线补采。")
+        if sum(1 for item in hotspots if item.get("risk") == "high") >= 2:
+            advice.append("高风险热点较集中，建议下次采集启用恢复模式并提升候选解预算。")
+        focus = hotspots[:3]
+        if focus:
+            labels = [f"{item.get('title')}（{item.get('start_timestamp')}~{item.get('end_timestamp')}）" for item in focus]
+            advice.append("重点关注区段：" + "；".join(labels))
+        return advice[:5]
+
     def build_trajectory_payload(self, arguments: Dict[str, Any], board: Dict[str, Any]) -> Dict[str, Any]:
         epochs: List[EpochRecord] = board.get("raw_epochs", [])
         final_epoch_results = board.get("final_epoch_results", [])
@@ -626,18 +855,14 @@ class ToolRegistry:
             max_lat = max(p["latitude"] for p in points)
             min_lon = min(p["longitude"] for p in points)
             max_lon = max(p["longitude"] for p in points)
-            center = {
-                "latitude": round((min_lat + max_lat) / 2.0, 7),
-                "longitude": round((min_lon + max_lon) / 2.0, 7),
-            }
-            bounds = {
-                "southwest": [round(min_lon, 7), round(min_lat, 7)],
-                "northeast": [round(max_lon, 7), round(max_lat, 7)],
-            }
+            center = {"latitude": round((min_lat + max_lat) / 2.0, 7), "longitude": round((min_lon + max_lon) / 2.0, 7)}
+            bounds = {"southwest": [round(min_lon, 7), round(min_lat, 7)], "northeast": [round(max_lon, 7), round(max_lat, 7)]}
         else:
             center = None
             bounds = None
 
+        hotspots = self._build_hotspots_from_points(points)
+        collection_advice = self._build_collection_advice(hotspots)
         strategy_distribution = dict(Counter(p["strategy_profile"] for p in points))
         risk_distribution = dict(Counter(p["risk"] for p in points))
         trajectory = {
@@ -645,19 +870,18 @@ class ToolRegistry:
             "point_count": len(points),
             "points": points,
             "segments": segments,
+            "hotspots": hotspots,
+            "collection_advice": collection_advice,
             "start_point": points[0] if points else None,
             "end_point": points[-1] if points else None,
             "center": center,
             "bounds": bounds,
-            "playback": {
-                "default_interval_ms": 450,
-                "max_index": max(len(points) - 1, 0),
-                "initial_index": 0,
-            },
+            "playback": {"default_interval_ms": 450, "max_index": max(len(points) - 1, 0), "initial_index": 0},
             "stats": {
                 "track_length_m": round(total_distance_m, 2),
                 "point_count": len(points),
                 "segment_count": len(segments),
+                "hotspot_count": len(hotspots),
                 "high_risk_points": sum(1 for p in points if p["risk"] == "high"),
                 "jump_points": sum(1 for p in points if p["jump_detected"]),
                 "strategy_distribution": strategy_distribution,
@@ -666,6 +890,113 @@ class ToolRegistry:
         }
         board.setdefault("optional_context", {})["trajectory"] = trajectory
         return trajectory
+
+    def diagnose_hotspot_window(self, arguments: Dict[str, Any], board: Dict[str, Any]) -> Dict[str, Any]:
+        request = board.get("diagnosis_request", {})
+        hotspot_id = str(arguments.get("hotspot_id") or request.get("hotspot_id") or "")
+        trajectory = board.get("optional_context", {}).get("trajectory", {})
+        hotspots = trajectory.get("hotspots", [])
+        hotspot = next((item for item in hotspots if str(item.get("id")) == hotspot_id), None)
+        if hotspot is None:
+            return {
+                "hotspot_id": hotspot_id,
+                "title": "未找到热点",
+                "diagnosis": "当前分析结果中没有匹配的风险热点，请先完成一次分析并选择热点列表中的项目。",
+                "evidence": {},
+                "recommendations": ["重新选择有效热点后再进行深挖诊断。"],
+                "suggested_strategy": {"mode": "balanced_navigation"},
+            }
+
+        start_idx = int(hotspot.get("point_start_index", 0))
+        end_idx = int(hotspot.get("point_end_index", start_idx))
+        points = trajectory.get("points", [])
+        window_points = [p for p in points if start_idx <= int(p.get("seq", -1)) <= end_idx]
+        if not window_points:
+            window_points = points[start_idx : end_idx + 1] if points else []
+
+        def avg(values):
+            values = [float(v) for v in values if v is not None]
+            return round(sum(values) / float(len(values) or 1), 4) if values else 0.0
+
+        final_results = board.get("final_epoch_results", [])
+        epoch_indices = [int(p.get("epoch_index", -1)) for p in window_points]
+        sep_values = []
+        for idx in epoch_indices:
+            if 0 <= idx < len(final_results):
+                sep_values.append(final_results[idx].get("separation_score"))
+
+        risk_counter = Counter(str(p.get("risk", "unknown")) for p in window_points)
+        jump_count = sum(1 for p in window_points if p.get("jump_detected"))
+        max_error = max([float(p.get("baseline_error_m", 0.0)) for p in window_points] or [0.0])
+        max_threshold = max([float(p.get("dynamic_threshold_m", 0.0)) for p in window_points] or [0.0])
+        avg_conf = avg([p.get("confidence") for p in window_points])
+        avg_quality = avg([p.get("quality_score") for p in window_points])
+        avg_sats = avg([p.get("satellite_count") for p in window_points])
+        avg_sep = avg(sep_values)
+        reasons = list(hotspot.get("reasons", []))
+
+        primary_causes: List[str] = []
+        if avg_conf < 0.70:
+            primary_causes.append("局部置信度低于全局稳态水平")
+        if avg_quality < 0.60:
+            primary_causes.append("观测质量分数偏低")
+        if avg_sats < 8.0:
+            primary_causes.append("可用卫星数量不足或可见性下降")
+        if jump_count > 0:
+            primary_causes.append("窗口内出现航向跳变")
+        if max_error > max(max_threshold * 0.95, 0.02):
+            primary_causes.append("基线误差接近动态阈值")
+        if avg_sep and avg_sep < 0.12:
+            primary_causes.append("候选解分离度不足")
+        if not primary_causes:
+            primary_causes = reasons or ["该窗口风险主要来自中等风险历元连续出现"]
+
+        recommendations: List[str] = []
+        if jump_count > 0:
+            recommendations.append("优先启用 continuity-first 策略，提高 temporal hold 强度，降低航向突跳。")
+        if avg_sats < 8.0:
+            recommendations.append("建议在该区段减速通过、延长采样时长，或避开明显遮挡侧进行补采。")
+        if avg_sep and avg_sep < 0.12:
+            recommendations.append("建议提高候选解数量并扩大搜索半径，降低模糊度候选混淆。")
+        if max_error > max(max_threshold * 0.95, 0.02):
+            recommendations.append("建议启用 recovery 模式，并放宽重试轮次以重新锁定稳定候选。")
+        if not recommendations:
+            recommendations.append("建议保持当前 balanced 策略，同时对该时间窗进行复核和补采确认。")
+
+        suggested_strategy = {
+            "mode": "continuity_first" if jump_count > 0 or avg_sats < 8.0 else "balanced_robust",
+            "candidate_count": 14 if avg_sats < 8.0 or avg_sep < 0.12 else 10,
+            "search_radius_deg": 14.0 if avg_sep < 0.12 else 10.0,
+            "temporal_hold_strength": 0.86 if jump_count > 0 else 0.72,
+            "enable_recovery_mode": bool(max_error > max(max_threshold * 0.95, 0.02) or avg_sats < 8.0),
+        }
+        evidence = {
+            "time_window": f"{hotspot.get('start_timestamp')} ~ {hotspot.get('end_timestamp')}",
+            "point_count": len(window_points),
+            "risk_distribution": dict(risk_counter),
+            "avg_confidence": avg_conf,
+            "avg_quality_score": avg_quality,
+            "avg_satellite_count": avg_sats,
+            "avg_separation_score": avg_sep,
+            "jump_count": jump_count,
+            "max_baseline_error_m": round(max_error, 6),
+            "max_dynamic_threshold_m": round(max_threshold, 6),
+            "hotspot_reasons": reasons,
+        }
+        diagnosis = (
+            f"{hotspot.get('title')} 的主要风险来自：{'、'.join(primary_causes)}。"
+            f"该窗口平均置信度 {avg_conf:.2f}，平均卫星数 {avg_sats:.1f}，跳变 {jump_count} 次，"
+            f"最大基线误差 {max_error:.4f} m。"
+        )
+        return {
+            "hotspot_id": hotspot_id,
+            "title": hotspot.get("title", hotspot_id),
+            "diagnosis": diagnosis,
+            "evidence": evidence,
+            "recommendations": recommendations[:5],
+            "suggested_strategy": suggested_strategy,
+        }
+
 
     def compile_report_payload(self, arguments: Dict[str, Any], board: Dict[str, Any]) -> Dict[str, Any]:
         return {

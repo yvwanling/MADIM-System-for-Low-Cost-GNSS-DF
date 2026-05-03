@@ -10,6 +10,7 @@ ROOT_DIR = Path(__file__).resolve().parents[3]
 DATA_DIR = ROOT_DIR / "data"
 RAW_DATA_DIR = DATA_DIR / "raw"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
+SKILLS_DIR = ROOT_DIR / "backend" / "skills"
 
 
 def _load_env_file() -> None:
