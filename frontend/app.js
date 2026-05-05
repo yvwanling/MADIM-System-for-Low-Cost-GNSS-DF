@@ -15,6 +15,52 @@ let agentTraceStore = [];
 let hotspotStore = [];
 let selectedHotspotId = null;
 
+
+
+function showLanding() {
+  document.getElementById('landingPage')?.classList.remove('hidden');
+  document.getElementById('appPage')?.classList.add('hidden');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function openWorkspace() {
+  document.getElementById('landingPage')?.classList.add('hidden');
+  document.getElementById('loginModal')?.classList.add('hidden');
+  document.getElementById('appPage')?.classList.remove('hidden');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  localStorage.setItem('madi_navagent_entered', 'true');
+}
+
+function openLoginModal() {
+  document.getElementById('loginModal')?.classList.remove('hidden');
+}
+
+function closeLoginModal() {
+  document.getElementById('loginModal')?.classList.add('hidden');
+}
+
+function bindLandingEvents() {
+  document.getElementById('enterAppBtn')?.addEventListener('click', openWorkspace);
+  document.getElementById('landingExploreBtn')?.addEventListener('click', openWorkspace);
+  document.getElementById('loginOpenBtn')?.addEventListener('click', openLoginModal);
+  document.getElementById('loginCloseBtn')?.addEventListener('click', closeLoginModal);
+  document.getElementById('loginModal')?.addEventListener('click', (event) => {
+    if (event.target?.id === 'loginModal') closeLoginModal();
+  });
+  document.getElementById('loginSubmitBtn')?.addEventListener('click', () => {
+    const name = document.getElementById('loginName')?.value?.trim();
+    if (name) localStorage.setItem('madi_navagent_user', name);
+    openWorkspace();
+  });
+  document.getElementById('landingDemoBtn')?.addEventListener('click', () => {
+    openWorkspace();
+    setTimeout(() => {
+      const demoButton = document.getElementById('demoBtn');
+      if (demoButton) demoButton.click();
+    }, 450);
+  });
+}
+
 let playbackState = {
   points: [],
   index: 0,
@@ -990,6 +1036,7 @@ function togglePlayback() {
 }
 
 function bindEvents() {
+  bindLandingEvents();
   initCollapsibles();
   document.getElementById('analyzeBtn')?.addEventListener('click', analyzeSample);
   document.getElementById('uploadBtn')?.addEventListener('click', uploadAndAnalyze);

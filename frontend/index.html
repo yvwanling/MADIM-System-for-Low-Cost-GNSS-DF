@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GNSS Navigation Agent System v2</title>
-  <link rel="stylesheet" href="style.css?v=product-v4-20260501" />
+  <title>MADI-M NavAgent 可信导航分析中枢</title>
+  <link rel="stylesheet" href="style.css?v=landing-orbit-v2-20260505" />
 
   <style id="collapsible-critical-css">
     [data-collapsible].collapsed > .collapsible-body { display: none !important; }
@@ -12,9 +12,115 @@
   </style>
 </head>
 <body>
-  <div class="page">
+  <section id="landingPage" class="landing-page">
+    <nav class="landing-nav glass-card">
+      <div class="brand-block">
+        <div class="brand-mark">M</div>
+        <div>
+          <div class="brand-name">MADI-M NavAgent</div>
+          <div class="brand-subtitle">多智能体导航质量分析平台</div>
+        </div>
+      </div>
+      <div class="landing-links">
+        <a href="#productCapability">能力矩阵</a>
+        <a href="#workflowIntro">分析流程</a>
+        <a href="#scenarioIntro">场景模板</a>
+        <a href="#qaIntro">说明</a>
+      </div>
+      <div class="landing-actions">
+        <button id="loginOpenBtn" class="ghost-btn" type="button">登录</button>
+        <button id="enterAppBtn" class="primary-pill" type="button">打开工作台 →</button>
+      </div>
+    </nav>
+
+    <div class="landing-hero">
+      <div class="landing-copy">
+        <div class="eyebrow"><span></span> v2.1 · Agentic GNSS Analytics · Integrity</div>
+        <h1>GNSS 数据可信分析中枢<br/><strong>从采集日志到策略决策</strong></h1>
+        <p class="hero-desc">MADI-M NavAgent 面向低成本 GNSS 采集日志，将质量审查、策略推演、完整性守护、风险诊断与报告交付组织成可追踪的多 Agent 工作流。</p>
+        <div class="hero-cta">
+          <button id="landingDemoBtn" class="primary-cta" type="button">启动标准分析</button>
+          <button id="landingExploreBtn" class="secondary-cta" type="button">打开分析工作台</button>
+        </div>
+        <div class="hero-kpis">
+          <div><strong>1653+</strong><span>样例历元验证</span></div>
+          <div><strong>8+</strong><span>专业 Agent 协作</span></div>
+          <div><strong>4</strong><span>策略对比模式</span></div>
+        </div>
+      </div>
+
+      <div class="landing-visual">
+        <div class="dashboard-window">
+          <div class="window-bar"><span></span><span></span><span></span><em>Integrity Mission Console</em></div>
+          <div class="mock-map">
+            <div class="route-line"></div>
+            <div class="risk-point p1"></div>
+            <div class="risk-point p2"></div>
+            <div class="risk-point p3"></div>
+            <div class="floating-card confidence-card"><small>可信评分</small><strong>0.77</strong><span>已完成评估</span></div>
+            <div class="floating-card risk-card"><small>风险片区</small><strong>7 处</strong><span>可定位复查</span></div>
+          </div>
+          <div class="agent-strip">
+            <div><b>Quality Agent</b><span>质量审查</span><i style="width: 88%"></i></div>
+            <div><b>Strategy Agent</b><span>策略推演</span><i style="width: 76%"></i></div>
+            <div><b>Integrity Agent</b><span>完整性守护</span><i style="width: 82%"></i></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="productCapability" class="landing-section feature-grid">
+      <article><h3>任务编排中枢</h3><p>Supervisor 统一编排专业 Agent，将解析、质控、策略、完整性与解释链路拆成可追踪步骤。</p></article>
+      <article><h3>风险空间复盘</h3><p>把风险片区、跳变和置信度变化叠加到轨迹上，支持定位复查与下一次采集建议。</p></article>
+      <article><h3>策略沙盘对比</h3><p>同一数据集可横向比较精度优先、连续性优先、稳健恢复等方案，输出推荐依据。</p></article>
+      <article><h3>数据资产与报告</h3><p>上传日志自动入库并参与复用评测，分析结论可导出 HTML 报告，便于留档交付。</p></article>
+    </div>
+
+    <div id="workflowIntro" class="landing-section workflow-preview">
+      <h2>一条数据日志的智能分析闭环</h2>
+      <div class="workflow-steps">
+        <span>接入采集日志</span><b>→</b><span>Agent 分工研判</span><b>→</b><span>风险片区诊断</span><b>→</b><span>策略建议与报告交付</span>
+      </div>
+    </div>
+
+    <div id="scenarioIntro" class="landing-section scenario-cards">
+      <h2>场景模板</h2>
+      <div>
+        <span>遮挡街区连续性</span>
+        <span>开阔环境精度优先</span>
+        <span>动态载体稳健输出</span>
+        <span>高风险片区补采建议</span>
+      </div>
+    </div>
+
+    <div id="qaIntro" class="landing-footer-note">
+      <p>核心数值计算由本地确定性工具链完成，LLM 主要用于策略推演、异常解释与交互问答，兼顾专业可靠性与 Agent 灵活性。</p>
+    </div>
+  </section>
+
+  <div id="loginModal" class="login-modal hidden" role="dialog" aria-modal="true">
+    <div class="login-card">
+      <button id="loginCloseBtn" class="modal-close" type="button">×</button>
+      <h2>进入 MADI-M 工作区</h2>
+      <p>本地轻量入口，仅用于记录当前工作身份。</p>
+      <label>用户名
+        <input id="loginName" type="text" placeholder="请输入姓名或团队名" />
+      </label>
+      <label>使用场景
+        <select id="loginRole">
+          <option>算法研发</option>
+          <option>导航测试</option>
+          <option>项目展示</option>
+          <option>数据分析</option>
+        </select>
+      </label>
+      <button id="loginSubmitBtn" class="primary-cta full" type="button">进入工作区</button>
+    </div>
+  </div>
+
+  <div id="appPage" class="page app-shell hidden">
     <aside class="sidebar">
-      <h1>GNSS Navigation Agent System v2</h1>
+      <div class="side-brand"><div class="side-logo">M</div><div><h1>MADI-M NavAgent</h1><p>智能导航分析工作台</p></div></div>
 
       <section class="panel dark-panel">
         <h2>内置样例分析</h2>
@@ -64,7 +170,7 @@
       </section>
 
       <section class="panel dark-panel">
-        <h2>场景策略规划</h2>
+        <h2>场景策略推演</h2>
         <label>输入你的目标
           <textarea id="sceneGoal" rows="6" placeholder="例如：城市峡谷环境优先连续性；当前环境疑似遮挡严重，尽量降低跳变。"></textarea>
         </label>
@@ -74,7 +180,7 @@
 
       <section class="panel dark-panel">
         <h2>导航分析工作台</h2>
-        <button id="demoBtn">运行标准分析流程</button>
+        <button id="demoBtn">启动标准分析</button>
         <button id="compareBtn">运行多策略对比</button>
         <button id="sampleEvalBtn">运行数据集评测</button>
         <button id="exportReportBtn">导出分析报告 HTML</button>
@@ -105,7 +211,7 @@
         <div class="panel">
           <div class="panel-head-between">
             <div>
-              <h2>多策略对比实验台</h2>
+              <h2>策略沙盘对比</h2>
             </div>
             <div id="strategyCompareStatus" class="map-status">等待运行</div>
           </div>
@@ -154,7 +260,7 @@
       <section class="panel wide map-panel">
         <div class="panel-head-between">
           <div>
-            <h2>风险感知轨迹回放</h2>
+            <h2>风险空间复盘</h2>
           </div>
           <div id="mapStatus" class="map-status">等待分析</div>
         </div>
@@ -182,14 +288,14 @@
         </div>
         <div class="collapsible-section collapsed" data-collapsible id="hotspotSection">
           <button class="collapsible-trigger" type="button" aria-expanded="false" aria-controls="hotspotBody">
-            <span class="collapsible-title">风险热点列表与解释</span>
+            <span class="collapsible-title">风险片区列表与解释</span>
             <span class="collapsible-meta" id="hotspotCollapseMeta">等待分析</span>
             <span class="collapsible-chevron">⌄</span>
           </button>
           <div class="collapsible-body" id="hotspotBody">
             <div class="grid hotspot-grid">
               <div class="panel inset-panel hotspot-panel">
-                <h3>风险热点列表</h3>
+                <h3>风险片区列表</h3>
                 <div id="hotspotList" class="hotspot-list muted">暂无热点。</div>
               </div>
               <div class="panel inset-panel hotspot-panel">
@@ -290,6 +396,6 @@
     </main>
   </div>
 
-  <script src="app.js?v=product-v4-20260501"></script>
+  <script src="app.js?v=landing-product-v1-20260505"></script>
 </body>
 </html>
